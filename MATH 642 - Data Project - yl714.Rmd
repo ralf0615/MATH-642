@@ -1,0 +1,266 @@
+---
+title: "MATH 642 - Data Project - yl714"
+author: "Neal(Yuchen) Li"
+date: "February 17, 2016"
+output: word_document
+---
+
+###Data Project (15%)
+
+#####Project Background: 
+It can not be denied that crude oil is the most important commodities, hence its price movement is a crucial financial determinant. 
+
+The following graph shows the oil price from January 2007 till Present.
+```{r echo=FALSE}
+cp=read.csv("cp.csv",header = TRUE) #cp stands for commodity price
+cp.ts=ts(cp,frequency = 12,start = c(1980,1))
+oil.price.ts=cp.ts[,36]
+ts.plot(window(oil.price.ts,c(2007,1)),ylab="Gas Price")
+```
+
+BAS is one of the stocks I am currently investing in, and the following graph is the price of BAS from January 2007 till Present, which bears great resemblance to oil price.
+
+```{r echo = FALSE}
+library(quantmod)
+getSymbols("BAS",src="google")
+barChart(BAS)
+```
+
+####Project Goals and Customers:
+
+To provide short-term forecasts of oil prices based on historical prices from January 1980 to February 2015, and, to give recommendations(i.e. buy, hold or sell) for oil stock investors.
+
+####Holt-Winters Exponential Smoothing
+If you have a time series that can be described using an additive model with increasing or decreasing trend and
+seasonality, you can use Holt-Winters exponential smoothing to make short-term forecasts.
+
+Holt-Winters exponential smoothing estimates the level, slope and seasonal component at the current time point.
+Smoothing is controlled by three parameters: alpha, beta, and gamma, for the estimates of the level, slope b of
+the trend component, and the seasonal component, respectively, at the current time point. The parameters alpha,
+beta and gamma all have values between 0 and 1, and values that are close to 0 mean that relatively little weight is placed on the most recent observations when making forecasts of future values.
+
+First, let's check if oil price can be described using an additive model with trend and seasonality.
+
+```{r echo=FALSE}
+oil.decompose=decompose(oil.price.ts)
+plot(oil.decompose)
+```
+
+The plot shows that historical oil price can be described as an additive model with increasing trend, seasonality and white noise.
+
+To make forecasts, we can fit a predictive model using the HoltWinters() functions.
+
+```{r echo=FALSE}
+oil.forecast.holt.winters = HoltWinters(oil.price.ts)
+oil.forecast.holt.winters
+oil.forecast.holt.winters$SSE
+```
+
+The estimated value of alpha, beta and gamma are 0.885, 0, and 1, respectively. The value of alpha (0.885)
+is relatively high, indicating that the estimate of the level at the current time point is based more upon  recent observations than observations in the more distant past. The value of beta is 0.00, indicating that the estimate of the slope b of the trend component is not updated over the time series, and instead is set equal to its initial value. This makes good intuitive sense, as the level changes quite a bit over the time series, but the slope b of the trend component remains roughly the same. In contrast, the value of gamma (1) is high, indicating that the estimate of the seasonal component at the current time point is just based upon very recent observations.
+
+As for Holt Winter's exponential smoothing, we can plot the original time series as a
+black line, with the forecasted values as a red line on top of that:
+
+```{r echo=FALSE}
+plot(oil.forecast.holt.winters)
+```
+
+#####(a) Forecasting using Holt-winters exponential smoothing
+To make forecasts for future times not included in the original time series, we use the "forecast.HoltWinters()" function in the "forecast" package. For example, the original data for the oil prices is from January 1980 to February 2015 If we wanted to make forecasts for March 2015 till present(February 2016) (12 more months), and plot the forecasts, we would type:
+
+```{r echo=FALSE}
+library(forecast)
+oil.forecast.holt.winters.12month = forecast.HoltWinters(oil.forecast.holt.winters,h=12)
+oil.forecast.holt.winters.12month
+plot.forecast(oil.forecast.holt.winters.12month)
+```
+
+The forecasts are shown as a blue line, and the blue and grey shaded areas show 80% and 95% prediction
+intervals, respectively.
+
+We can investigate whether the predictive model can be improved upon by checking whether the in-sample forecast
+errors show non-zero autocorrelations at lags 1-10, by making a correlogram and carrying out the Ljung-Box test:
+
+```{r echo=FALSE}
+acf(oil.forecast.holt.winters.12month$residuals,lag.max=10)
+Box.test(oil.forecast.holt.winters.12month$residuals, lag=10, type="Ljung-Box")
+```
+
+The correlogram shows that the autocorrelations for the in-sample forecast errors do exceed the significance bounds for lags 1-10. Furthermore, the p-value for Ljung-Box test is 2.2e-16, indicating that there is enough evidence of non-zero autocorrelations at lags 1-10.
+
+To check whether the forecast errors are normally distributed with mean zero, we can plot a histogram of the forecast errors, with an overlaid normal curve that has mean zero and the same standard deviation as the distribution of forecast errors. To do this, we can define an R function "plotForecastErrors()", below:
+
+First, let's define a function plotForecastErrors()
+```{r echo=FALSE}
+plotForecastErrors <- function(forecasterrors)
+{
+# make a histogram of the forecast errors:
+mybinsize <- IQR(forecasterrors)/4
+mysd <- sd(forecasterrors)
+mymin <- min(forecasterrors) - mysd*5
+mymax <- max(forecasterrors) + mysd*3
+# generate normally distributed data with mean 0 and standard deviation mysd
+mynorm <- rnorm(10000, mean=0, sd=mysd)
+mymin2 <- min(mynorm)
+mymax2 <- max(mynorm)
+if (mymin2 < mymin) { mymin <- mymin2 }
+if (mymax2 > mymax) { mymax <- mymax2 }
+# make a red histogram of the forecast errors, with the normally distributed data overlaid:
+mybins <- seq(mymin, mymax, mybinsize)
+hist(forecasterrors, col="red", freq=FALSE, breaks=mybins)
+# freq=FALSE ensures the area under the histogram = 1
+# generate normally distributed data with mean 0 and standard deviation mysd
+myhist <- hist(mynorm, plot=FALSE, breaks=mybins)
+# plot the normal curve as a blue line on top of the histogram of forecast errors:
+points(myhist$mids, myhist$density, type="l", col="blue", lwd=2)
+}
+```
+
+Then, we make a time plot and a histogram
+```{r echo=FALSE}
+plot.ts(oil.forecast.holt.winters.12month$residuals)
+plotForecastErrors(oil.forecast.holt.winters.12month$residuals)
+```
+
+From the time plot, it appears that in 2009, the forecast errors starts to fluctuate a lot more than before. In addition, from the histogram of forecast errors, it shows that the forecast errors are roughly normally distributed with mean zero and constant variance. Due to the contradiction of these two plots and the result of Ljung-Box test, we shall modify current Holt-winters exponential smoothing model.
+
+
+####ARIMA Models
+
+Since the forecast errors show more drift from zero than before, let's consider Autoregressive Integrated Moving Average(ARIMA) models which allow correlated error terms.
+
+Because ARIMA models are defined for stationary time series. Therefore, if oil price is non-stationary, you will first need to 'difference' the time series until you obtain a stationary time series. If you have to difference d times to obtain a stationary time series, then you have an ARIMA(p,d,q) mode, where d is the order of differencing used.
+
+Let's first difference oil price once, and plot the differenced series:
+```{r echo=FALSE}
+oil.price.diff.1=diff(oil.price.ts,differences = 1)
+plot.ts(oil.price.diff.1)
+```
+
+It seems than the first difference of oil price is stationary in mean, which centered around 0.
+
+#####(a) Selecting a suitable ARIMA model
+Since we have loosely obtained stationarity by observing the differencing plot, it's time to figure out an appropriate ARIMA model, ARIMA(p,d,q), where q and q are undetermined. Luckily, auto.arima() function can be used to find the appropriate ARIMA model and its output will suggest the value of p,d and q.
+
+```{r echo=FALSE}
+auto.arima(oil.price.ts)
+```
+
+Since p,d,q are 2,1,2 respectively, we can conclude that the first difference of oil price is indeed a stationary time series.
+
+#####(b) Forecasting using ARIMA(2,1,2) model
+
+First, we fit an ARIMA(2,1,2) model to oil price
+```{r echo=FALSE}
+oil.forecast.arima=arima(oil.price.ts,order=c(2,1,2))
+```
+
+Now let's forecast the price of oil using the model we just obtained.
+```{r echo=FALSE}
+library(forecast)
+oil.forecast.arima.12month = forecast.Arima(oil.forecast.arima,h=12)
+oil.forecast.arima.12month
+plot(oil.forecast.arima.12month)
+```
+
+#####(c) Checking correlations between successive forcast errors
+Again, let's use Ljung-Box test:
+```{r echo=FALSE}
+acf(oil.forecast.arima.12month$residuals,lag.max = 10)
+Box.test(oil.forecast.arima.12month$residuals,lag=10,type="Ljung-Box")
+```
+
+The p-value for the Ljung-Box test is 0.06429, indicating that there is little evidence suggests that there is correlations in the forecast errors for lags 1-10.
+
+To check whether forecast errors are normally distributed with mean zero and constant variance, we make a time plot of the forecast errors and a histogram.
+
+```{r echo=FALSE}
+plot.ts(oil.forecast.arima.12month$residuals) #Time plot of forecast errors
+plotForecastErrors(oil.forecast.arima.12month$residuals) #Density plot of forecast errors
+```
+
+The time plot shows that the forecast errors are roughly centered on zero with constant variance, and the histogram looks like a normal distribution with zero mean and constant variance.
+
+####ETS 
+
+ETS is a more recent R package developed by Dr. Rob Hyndman, ETS(Exponential smoothing state space model) gained its popularity over the year through Dr. Haydnman's famous paper: Automatic Time Series Forecasting: The forecast Package for R.
+
+#####(a) Forcasting using ETS()
+```{r echo=FALSE}
+oil.forecast.ets=ets(oil.price.ts,model = 'MMM',damped = TRUE)
+oil.forecast.ets.12month=forecast(oil.forecast.ets,h=12)
+plot(oil.forecast.ets.12month)
+```
+
+#####(b) Checking correlations between successive forecast errors
+Let's use Ljung-Box test:
+```{r echo=FALSE}
+acf(oil.forecast.ets.12month$residuals,lag.max=10)
+Box.test(oil.forecast.ets.12month$residuals,lag=10,type="Ljung-Box")
+```
+The p-value for the Ljung-Box test is 3.788e-10, indicating that there is little evidence suggests that there is correlations in the forecast errors for lags 1-10.
+
+To check whether forecast errors are normally distributed with mean zero and constant variance, we make a time plot of the forecast errors and a histogram.
+
+```{r echo=FALSE}
+plot.ts(oil.forecast.ets.12month$residuals) #Time plot of forecast errors
+plotForecastErrors(oil.forecast.ets.12month$residuals) #Density plot of forecast errors
+```
+
+Similarly to previous models, the time plot shows that the forecast errors of ETS model are roughly centered on zero with constant variance, and the histogram looks like a normal distribution with zero mean and constant variance.
+
+####Model Selection
+Time series cross-validation answers two important questions:
+
+1. We have used Holtwinters, ARIMA and ETS model, which one is the best?
+
+2. Some of models may require tuning during model training, which tuning parameter values should we choose?
+
+Here I compare the Mean Absolute Error(MAE) of each model on different horizons.
+
+According to Dr. Hyndman, time-series cross-validation follows the following steps:
+
+Assume k is the minimum number of observations for a training set.
+
+(1) Select observation k+i for test set, and use observations at times 1,2,..., k+i-1 to estimate model. Compute error on forecast for time k+i.
+
+(2) Repeat for i = 0,1,..., T-k where T is total number of observations.
+
+(3) Compute accuracy measure (MAE) over all errors.
+
+```{r echo=FALSE}
+k <- 120 # minimum data length for fitting a model
+n <- length(oil.price.ts)
+mae1 <- mae2 <- mae3 <- matrix(NA,12,12)
+st <- tsp(oil.price.ts)[1]+(k-1)/12
+for(i in 1:12)
+{
+  xshort <- window(oil.price.ts, end=st + (i-1))
+  xnext <- window(oil.price.ts, start=st + (i-1) + 1/12, end=st + i)
+  fit1 <- HoltWinters(xshort)
+  fcast1 <- forecast(fit1, h=12)
+  fit2 <- Arima(xshort, order=c(2,1,2), seasonal=list(order=c(0,1,1), period=12), 
+      include.drift=TRUE, lambda=0, method="ML")
+  fcast2 <- forecast(fit2, h=12)
+  fit3 <- ets(xshort,model="MMM",damped=TRUE)
+  fcast3 <- forecast(fit3, h=12)
+  mae1[i,] <- abs(fcast1[['mean']]-xnext)
+  mae2[i,] <- abs(fcast2[['mean']]-xnext)
+  mae3[i,] <- abs(fcast3[['mean']]-xnext)
+}
+plot(1:12, colMeans(mae1), type="l", col=2, xlab="horizon", ylab="MAE",
+     ylim=c(1,6))
+lines(1:12, colMeans(mae2), type="l",col=3)
+lines(1:12, colMeans(mae3), type="l",col=4)
+legend("topleft",legend=c("Holtwinters","ARIMA","ETS"),col=2:4,lty=1)
+```
+
+The MAE plot shows that all three models (Holtwinters, ARIMA, ETS) has increasing MAE as horizon goes up, which makes perfect sense because the further into the future, the less forecasting power a model has. In terms of selecting model, ETS has the smallest MAE before 4 horizons, while holtwinters has between 4 and 7, ETS between 8 and 9, and ARIMA after 9. As a result, when forecasting short term(less than 4 horizons(month)), ETS beats all other model after we compare their MAE after cross validation. 
+
+```{r echo=FALSE}
+oil.forecast.ets.12month$mean
+```
+
+ETS model predicts that oil price will level off in March, April, May and slightly decrease in June, in conclusion, oil price will be facing continuous downward pressure, hence investor should carefully consider investment decision and lean towards selling.
+

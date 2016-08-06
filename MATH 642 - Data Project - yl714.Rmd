@@ -1,11 +1,11 @@
 ---
 title: "MATH 642 - Data Project - yl714"
-author: "Neal(Yuchen) Li"
+author: "Yuchen Li"
 date: "February 17, 2016"
 output: word_document
 ---
 
-###Data Project (15%)
+###Data Project (15%): Is it time to long oil stocks? Insights from historical data
 
 #####Project Background: 
 It can not be denied that crude oil is the most important commodities, hence its price movement is a crucial financial determinant. 
